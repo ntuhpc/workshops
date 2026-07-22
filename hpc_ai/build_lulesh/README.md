@@ -15,16 +15,6 @@ By the end of this workshop you will have learned:
 - MPI execution
 - performance analysis.
 
-## Optimisation Flow
-
-Instead of applying all optimsations all at once, we apply optimisations iteratively to observe their effect.
-
-> **Measure → Identify Bottlenecks → Optimise → Measure Again**
-
-Each optimisation will be compared against a **recorded baseline** so that performance improvements can be quantified.
-
----
-
 # Workshop Flow
 
 | Stage | Goal                                    |
@@ -39,18 +29,31 @@ Each optimisation will be compared against a **recorded baseline** so that perfo
 
 ---
 
-# Setup: Access Aspire2A
+# Setup: Accessing & Using Aspire2A
 
-Follow the steps [here](https://github.com/ntuhpc/workshops/blob/80a281c2f74330305a1bb65f35b30b76e6ee5eaa/ml_aspire2a/README.md#access-aspire2a) to access aspire 2A.g
+## Accessing Aspire 2A
 
-# Part 1: Build LULESH
+Follow the steps [here](https://github.com/ntuhpc/workshops/blob/80a281c2f74330305a1bb65f35b30b76e6ee5eaa/ml_aspire2a/README.md#access-aspire2a) to access aspire 2A.
 
-Clone the repository
+## Aspire2A Service Units
 
-```bash
-git clone https://github.com/LLNL/LULESH.git
-cd LULESH
-```
+Aspire2A uses a project-based allocation system to manage access to compute resources. Every job submitted through PBS must specify a valid **project ID**, which determines where the resource usage is charged.
+
+Aspire2A uses a **Service Unit (SU)** system to manage and account for compute resource usage. SU can be thought of as the **currency used to pay for access to computing resources**. Jobs consume SU based on the amount of CPU or GPU resources requested and the duration of the job.
+
+- **CPU jobs:** 1 SU per CPU core hour.
+- **GPU jobs:** 64 SU per GPU hour.
+
+### Personal Project
+
+New users receive a personal project allocation when their account is created. This allocation provides a fixed number of **Service Units (SU)** for learning, testing, and small-scale workloads.
+
+Personal SU allocations are:
+
+- **100,000 SU** for users from NUS, SUTD, NTU, and A\*STAR.
+- **10,000 SU** for users from SIT, SMU, SUSS, NP, NYP, RP, SP, and TP.
+
+Personal SU quotas are fixed, cannot be transferred, and cannot be topped up. After the personal allocation is exhausted, jobs must be submitted using an approved project allocation.
 
 ## Software Modules
 
@@ -78,6 +81,64 @@ module list # list what modules are included
 Currently Loaded Modulefiles:
   1) gcc/11.2.0               3) cray-dsmml/0.2.2         5) craype-network-ofi       7) cray-libsci/21.08.1.2    9) PrgEnv-gnu/8.3.3
   2) craype/2.7.15            4) libfabric/1.11.0.4.125   6) cray-mpich/8.1.15        8) cray-pals/1.1.6
+```
+
+## Compute Nodes
+
+```mermaid
+graph LR
+  A((User)) -- SSH --> B[Login Node]
+  B -- Submit Job --> C["Compute Node(s)"]
+
+  subgraph "Aspire2A"
+    B
+    C
+  end
+
+```
+
+When you connect to Aspire2A via SSH, you are connected to a **login node**. Login nodes are intended for lightweight tasks such as editing files, compiling code, and submitting jobs.
+
+To use Aspire2A's compute resources (CPUs and GPUs), you must request a **compute node** through the PBS scheduler. While small builds can be performed on the login node, computationally intensive builds and all applications runs should be performed on a compute node.
+
+### PBS Scheduler
+
+Request an interactive compute node with:
+
+```sh
+qsub -I -q normal -P personal -l select=1:ncpus=64 -l walltime=1:00:00
+```
+
+- `qsub` - Submit a job to PBS.
+- `-I` - Start an interactive shell on the allocated compute node.
+- `-q normal` - Submit to the `normal` queue.
+- `-P personal` - Charge the job to your personal project.
+- `-l select=1:ncpus=64` - Request 64 CPU cores on one compute node.
+- `-l walltime=1:00:00` - Reserve the node for up to one hour.
+
+> Once the job starts, your terminal is running on the allocated compute node and any commands you execute will use its resources.
+
+> Note: If it takes more than 5 minutes to acquire a node, Aspire2A's job queues might be congested. We can verify this by running the `qstat -q` command.
+>
+> ```
+> ...
+> qdev              440gb    --    02:00:00  --      6    52   --   E R
+> ...
+> ```
+>
+> Woah, there are more than 52 jobs in front of you. It may be faster to acquire a GPU node instead, at the cost of a higher SU burn.
+>
+> ```sh
+> qsub -I -q normal -P personal -l select=1:ncpus=64:ngpus=1 -l walltime=1:00:00
+> ```
+
+# Part 1: Build LULESH
+
+Clone the repository
+
+```bash
+git clone https://github.com/LLNL/LULESH.git
+cd LULESH
 ```
 
 ## Make
@@ -251,75 +312,6 @@ Finally, LULESH has been built.
 
 # Part 2: Running LULESH
 
-## Aspire2A
-
-```mermaid
-graph LR
-  A((User)) -- SSH --> B[Login Node]
-  B -- Submit Job --> C["Compute Node(s)"]
-
-  subgraph "Aspire2A"
-    B
-    C
-  end
-
-```
-
-When you connect to Aspire2A via SSH, you are connected to a **login node**. Login nodes are intended for lightweight tasks such as editing files, compiling code, and submitting jobs.
-
-To use Aspire2A's compute resources (CPUs and GPUs), you must request a **compute node** through the PBS scheduler. While small builds can be performed on the login node, computationally intensive builds and all applications runs should be performed on a compute node.
-
-## Aspire2A Service Units
-
-Aspire2A uses a project-based allocation system to manage access to compute resources. Every job submitted through PBS must specify a valid **project ID**, which determines where the resource usage is charged.
-
-Aspire2A uses a **Service Unit (SU)** system to manage and account for compute resource usage. SU can be thought of as the **currency used to pay for access to computing resources**. Jobs consume SU based on the amount of CPU or GPU resources requested and the duration of the job.
-
-- **CPU jobs:** 1 SU per CPU core hour.
-- **GPU jobs:** 64 SU per GPU hour.
-
-### Personal Project
-
-New users receive a personal project allocation when their account is created. This allocation provides a fixed number of **Service Units (SU)** for learning, testing, and small-scale workloads.
-
-Personal SU allocations are:
-
-- **100,000 SU** for users from NUS, SUTD, NTU, and A\*STAR.
-- **10,000 SU** for users from SIT, SMU, SUSS, NP, NYP, RP, SP, and TP.
-
-Personal SU quotas are fixed, cannot be transferred, and cannot be topped up. After the personal allocation is exhausted, jobs must be submitted using an approved project allocation.
-
-### PBS Scheduler
-
-Request an interactive compute node with:
-
-```sh
-qsub -I -q normal -P personal -l select=1:ncpus=64 -l walltime=1:00:00
-```
-
-- `qsub` - Submit a job to PBS.
-- `-I` - Start an interactive shell on the allocated compute node.
-- `-q normal` - Submit to the `normal` queue.
-- `-P personal` - Charge the job to your personal project.
-- `-l select=1:ncpus=64` - Request 64 CPU cores on one compute node.
-- `-l walltime=1:00:00` - Reserve the node for up to one hour.
-
-> Once the job starts, your terminal is running on the allocated compute node and any commands you execute will use its resources.
-
-> Note: If it takes more than 5 minutes to acquire a node, Aspire2A's job queues might be congested. We can verify this by running the `qstat -q` command.
->
-> ```
-> ...
-> qdev              440gb    --    02:00:00  --      6    52   --   E R
-> ...
-> ```
->
-> Woah, there are more than 52 jobs in front of you. It may be faster to acquire a GPU node instead, at the cost of a higher SU burn.
->
-> ```sh
-> qsub -I -q normal -P personal -l select=1:ncpus=64:ngpus=1 -l walltime=1:00:00
-> ```
-
 ## Run Lulesh
 
 Before attempting any optimisation, establish a unoptimised baseline to compare against. We measure the runtime of LULESH on problem size `-s` of 25.
@@ -364,7 +356,7 @@ FOM                  =  179.68179 (z/s)
 
 # Part 3: Optimising LULESH
 
-Performance optimisation is an iterative process. Apply one optimisation at a time, measure its impact, and verify that the program still produces correct results.
+Instead of applying all optimsations all at once, we apply optimisations iteratively to observe their effect. Apply one optimisation at a time, measure its impact, and verify that the program still produces correct results.
 
 ```mermaid
 flowchart TB
@@ -385,7 +377,8 @@ The optimisation workflow consists of five steps:
 
 ## Baseline
 
-The **baseline** is the initial, unoptimised implementation that all subsequent optimisations are compared against.
+Each optimisation will be compared against a **recorded baseline** so that performance improvements can be quantified.
+
 Record our initial results in a spreadsheet to establish a **baseline** performance to compare against.
 
 | **Optimisation** | Problem Size | MaxAbsDiff   | Elapsed Time | **Speedup** |
