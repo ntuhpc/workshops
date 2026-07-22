@@ -1,12 +1,12 @@
 # HPC/AI Workshop 1: Introduction to HPC Performance Optimisation with Aspire2A
 
-High Performance Computing (HPC) is about more than having access to thousands of CPU cores 
+High Performance Computing (HPC) is about more than having access to thousands of CPU cores
 it is about writing software that can efficiently utilise those resources.
 
 In this workshop, we will build and optimise the **LULESH (Livermore Unstructured Lagrangian Explicit Shock Hydrodynamics)** application developed by Lawrence Livermore National Laboratory (LLNL) to simulate Hydrodynamics, how fluids move and interact with each other.
 
-
 By the end of this workshop you will have learned:
+
 - Using the Aspire2A supercomputer.
 - building scientific applications
 - compiler optimisation
@@ -16,12 +16,12 @@ By the end of this workshop you will have learned:
 - performance analysis.
 
 ## Optimisation Flow
+
 Instead of applying all optimsations all at once, we apply optimisations iteratively to observe their effect.
 
 > **Measure → Identify Bottlenecks → Optimise → Measure Again**
 
 Each optimisation will be compared against a **recorded baseline** so that performance improvements can be quantified.
-
 
 ---
 
@@ -39,11 +39,11 @@ Each optimisation will be compared against a **recorded baseline** so that perfo
 
 ---
 
-
 # Setup: Access Aspire2A
 
-Follow the steps [here](https://github.com/ntuhpc/workshops/blob/80a281c2f74330305a1bb65f35b30b76e6ee5eaa/ml_aspire2a/README.md#access-aspire2a) to access aspire 2A.
-# Part 1 - Build LULESH
+Follow the steps [here](https://github.com/ntuhpc/workshops/blob/80a281c2f74330305a1bb65f35b30b76e6ee5eaa/ml_aspire2a/README.md#access-aspire2a) to access aspire 2A.g
+
+# Part 1: Build LULESH
 
 Clone the repository
 
@@ -51,7 +51,6 @@ Clone the repository
 git clone https://github.com/LLNL/LULESH.git
 cd LULESH
 ```
-
 
 ## Software Modules
 
@@ -68,6 +67,7 @@ module unload <module>
 ```
 
 Throughout this workshop, you will use modules to switch between different compiler and MPI environments. Start by using the GNU programming environment's modules:
+
 ```shell
 module purge
 module load PrgEnv-gnu
@@ -82,10 +82,11 @@ Currently Loaded Modulefiles:
 
 ## Make
 
-**Make** is a build automation tool that compiles source code according to rules defined in a **Makefile**. 
+**Make** is a build automation tool that compiles source code according to rules defined in a **Makefile**.
 It determines which files need to be rebuilt based on their dependencies and invokes the appropriate compiler commands automatically.
 
 Take a peek at the Makefile to understand how LULESH is built:
+
 ```bash
 less Makefile
 ```
@@ -103,16 +104,20 @@ mpig++ -DUSE_MPI=1 -c -g -O3 -fopenmp -I. -Wall -o lulesh.o  lulesh.cc
 make: mpig++: Command not found
 make: *** [Makefile:47: lulesh.o] Error 127
 ```
+
 Bummer, the Makefile is trying to use `mpig++`. which is not available in the GNU programming environment.
 
 We have two choices:
+
 1. Load a prebuilt MPI implementation via `module load`.
 2. Build a MPI implementation ourselfes
 
 > In the interests of time, we will use a prebuilt implementation and building an MPI implementation by yourself is left as an exercise for the reader.
 
 Discover what MPI implementations are available with `module avail`:
+
 - `2>&1` redirects standard error to standard output, so that both are captured by the `grep` command.
+
 ```bash
 module avail  2>&1 | grep mpi
 ```
@@ -173,6 +178,7 @@ make: *** [Makefile:47: lulesh.o] Error 127
 ```
 
 Hmm no luck, lets take a look at the first few lines of the `Makefile` for clues
+
 ```make
 #default build suggestion of MPI + OPENMP with gcc on Livermore machines you might have to change the compiler name
 
@@ -190,6 +196,7 @@ CXX = $(MPICXX)
 ```
 
 We see that `SERCXX`, `MPICXX` are set to compiler commands `g++` and `mpig++`, lets check if we have them on our system:
+
 ```bash
 g++
 ```
@@ -199,23 +206,26 @@ g++: fatal error: no input files
 compilation terminated.
 ```
 
-
 ```bash
 mpig++
 ```
+
 ```
 bash: mpig++: command not found...
 ```
 
-Weird, we have loaded `openmpi/5.0.10-gcc11`  but is missing the compiler. Attempt to find the compiler using the shell's autocomplete:
+Weird, we have loaded `openmpi/5.0.10-gcc11` but is missing the compiler. Attempt to find the compiler using the shell's autocomplete:
+
 ```bash
 mpi<Tab><Tab>
 ```
+
 ```
 mpic++        mpicc         mpiCC         mpicxx        mpiexec       mpiexec.pals  mpif77        mpif90        mpifort       mpirun
 ```
 
-Ah! The compiler is named differently, we correct this by applying a command line override to `MPICXX` when building with make. 
+Ah! The compiler is named differently, we correct this by applying a command line override to `MPICXX` when building with make.
+
 ```bash
 make MPICXX="mpicxx -D USE_MPI=0 -D WITH_OPENMP=0" CXXFLAGS="-g -I." LDFLAGS="-g"
 ```
@@ -238,9 +248,11 @@ mpicxx -D USE_MPI=0 -D WITH_OPENMP=0 lulesh.o lulesh-comm.o lulesh-viz.o lulesh-
 ```
 
 Finally, LULESH has been built.
-# Part 2 - Measure Baseline
 
-## Aspire2A 
+# Part 2: Running LULESH
+
+## Aspire2A
+
 ```mermaid
 graph LR
   A((User)) -- SSH --> B[Login Node]
@@ -256,22 +268,57 @@ graph LR
 When you connect to Aspire2A via SSH, you are connected to a **login node**. Login nodes are intended for lightweight tasks such as editing files, compiling code, and submitting jobs.
 
 To use Aspire2A's compute resources (CPUs and GPUs), you must request a **compute node** through the PBS scheduler. While small builds can be performed on the login node, computationally intensive builds and all applications runs should be performed on a compute node.
+
+## Aspire2A Service Units
+
+Aspire2A uses a project-based allocation system to manage access to compute resources. Every job submitted through PBS must specify a valid **project ID**, which determines where the resource usage is charged.
+
+Aspire2A uses a **Service Unit (SU)** system to manage and account for compute resource usage. SU can be thought of as the **currency used to pay for access to computing resources**. Jobs consume SU based on the amount of CPU or GPU resources requested and the duration of the job.
+
+- **CPU jobs:** 1 SU per CPU core hour.
+- **GPU jobs:** 64 SU per GPU hour.
+
+### Personal Project
+
+New users receive a personal project allocation when their account is created. This allocation provides a fixed number of **Service Units (SU)** for learning, testing, and small-scale workloads.
+
+Personal SU allocations are:
+
+- **100,000 SU** for users from NUS, SUTD, NTU, and A\*STAR.
+- **10,000 SU** for users from SIT, SMU, SUSS, NP, NYP, RP, SP, and TP.
+
+Personal SU quotas are fixed, cannot be transferred, and cannot be topped up. After the personal allocation is exhausted, jobs must be submitted using an approved project allocation.
+
 ### PBS Scheduler
 
 Request an interactive compute node with:
 
 ```sh
-qsub -I -q normal -P personal -l select=1:ncpus=1 -l walltime=1:00:00
+qsub -I -q normal -P personal -l select=1:ncpus=64 -l walltime=1:00:00
 ```
 
 - `qsub` - Submit a job to PBS.
 - `-I` - Start an interactive shell on the allocated compute node.
 - `-q normal` - Submit to the `normal` queue.
 - `-P personal` - Charge the job to your personal project.
-- `-l select=1:ncpus=1` - Request one CPU core on one compute node.
+- `-l select=1:ncpus=64` - Request 64 CPU cores on one compute node.
 - `-l walltime=1:00:00` - Reserve the node for up to one hour.
 
 > Once the job starts, your terminal is running on the allocated compute node and any commands you execute will use its resources.
+
+> Note: If it takes more than 5 minutes to acquire a node, Aspire2A's job queues might be congested. We can verify this by running the `qstat -q` command.
+>
+> ```
+> ...
+> qdev              440gb    --    02:00:00  --      6    52   --   E R
+> ...
+> ```
+>
+> Woah, there are more than 52 jobs in front of you. It may be faster to acquire a GPU node instead, at the cost of a higher SU burn.
+>
+> ```sh
+> qsub -I -q normal -P personal -l select=1:ncpus=64:ngpus=1 -l walltime=1:00:00
+> ```
 
 ## Run Lulesh
 
@@ -279,7 +326,7 @@ Before attempting any optimisation, establish a unoptimised baseline to compare 
 
 ```bash
 cd $PBS_O_WORKDIR # change to the folder you ran qsub from.
-module load 
+module load
 ./lulesh2.0 -s 25 -p
 ```
 
@@ -311,267 +358,178 @@ Grind time (us/z/c)  =  5.5653944 (per dom)  ( 65.393384 overall)
 FOM                  =  179.68179 (z/s)
 ```
 
-Record the `Elapsed Time` as your baseline
+- `Problem Size` The value passed to `-s`, which determines the dimensions of the simulation mesh. For example, `-s 25` creates a mesh of 253=15,62525^3 = 15,625253=15,625 elements. Use the **same problem size** throughout the optimisation process to ensure a fair comparison.
+- `MaxAbsDiff` The maximum absolute difference between the computed solution and LULESH's reference solution. This is used to verify that the program still produces correct results after each optimisation, as some optimisations might appear to execute faster but produce numerically off results.
+- `Elapsed Time` The total execution time reported by LULESH in seconds. We evaluate optimisations by their ability to **reduce** `Elapsed Time`.
 
----
+# Part 3: Optimising LULESH
 
-# Part 3 - Verify Correctness
+Performance optimisation is an iterative process. Apply one optimisation at a time, measure its impact, and verify that the program still produces correct results.
 
-Performance means nothing if the program produces incorrect results.
-
-Verify
-
-- completes successfully
-    
-- final energy is correct
-    
-- no runtime error
-    
-
-Discuss
-
-> Optimisation should never change scientific correctness.
-
----
-
-# Part 4 - Profile Before Optimising
-
-Now ask the question:
-
-> Where is the program spending its time?
-
-Use Linux timing.
-
-```bash
-time ./lulesh2.0
+```mermaid
+flowchart TB
+    A[Baseline]
+    --> B[Profile]
+    --> C[Optimise]
+    --> D[Benchmark]
+    --> E[Verify] --> B
 ```
 
-Then use a profiler.
+The optimisation workflow consists of five steps:
 
-For example
+1. **Baseline**: Record the initial runtime and correctness metrics.
+2. **Profile**: Identify bottlenecks for optimisation.
+3. **Optimise**: Apply a single optimisation.
+4. **Benchmark**: Measure the new runtime, calculate the speedup, and repeat the process.
+5. **Verify**: Confirm that the results remain correct (ie. `MaxAbsDiff`)
 
-```bash
-gprof
-```
+## Baseline
 
-or
+The **baseline** is the initial, unoptimised implementation that all subsequent optimisations are compared against.
+Record our initial results in a spreadsheet to establish a **baseline** performance to compare against.
 
-```bash
-perf
-```
+| **Optimisation** | Problem Size | MaxAbsDiff   | Elapsed Time | **Speedup** |
+| ---------------- | ------------ | ------------ | ------------ | ----------- |
+| Baseline         | 25           | 3.637979e-11 | 65           | 1x          |
 
-or Intel VTune (if available).
+> We accept optimisations that produce solution with `MaxAbsDiff` within <= 1e-10 of the reference solution.
 
-Questions
+## Speedup
 
-- Which functions dominate runtime?
-    
-- Is the program compute bound?
-    
-- Is it memory bound?
-    
+The **speedup** of an optimisation measures how much faster it runs compared to the baseline:
 
-Students should identify the top 5 functions.
+$$
+\text{Speedup} = \frac{\text{Baseline Elapsed Time}}{\text{Optimised Elapsed Time}}
+$$
 
----
+For example, if the baseline runtime is **65 s**:
 
-# Part 5 - Compiler Optimisation
+| Elapsed Time | Speedup |
+| ------------ | ------- |
+| 65 s         | 1.00×   |
+| 32.5 s       | 2.00×   |
+| 21.7 s       | 3.00×   |
+| 13.0 s       | 5.00×   |
 
-Without changing a single line of code, try different optimisation levels.
+A larger speedup indicates a greater performance improvement. For example, a speedup of **2×** means the optimised program completes in half the time of the baseline, while a speedup of **5×** means it completes five times faster.
 
-Compile
+## Optimisation: Different Compilers
 
-```bash
--O0
-```
+Different compilers can generate different machine code from the same source code. Compiler design, optimisation strategies, and hardware-specific features can affect the final performance of an application.
 
-```bash
--O1
-```
+Repeat the same benchmark using different compiler environments:
 
-```bash
--O2
-```
-
-```bash
--O3
-```
-
-Optionally
-
-```bash
--Ofast
-```
-
-Record
-
-|Flags|Runtime|Speedup|
-|---|---|---|
-|-O0||1.00×|
-|-O1|||
-|-O2|||
-|-O3|||
-|-Ofast|||
-
-Discussion
-
-- Why does optimisation improve performance?
-    
-- Why isn't the improvement infinite?
-    
-- Is `-Ofast` always safe?
-    
-
----
-
-# Part 6 - Different Compilers
-
-Now repeat exactly the same benchmark using another compiler.
-
-Example
+Example:
 
 - GCC
-    
 - Intel OneAPI
-    
-- Clang (if available)
-    
 
-Record
-
-|Compiler|Runtime|
-|---|---|
-|GCC||
-|Intel||
-|Clang||
-
-Discussion
-
-Why can different compilers produce different executables from identical source code?
-
----
-
-# Part 7 - OpenMP
-
-Now introduce shared-memory parallelism.
-
-Compile
+Build LULESH with a different compiler:
 
 ```bash
-make USE_OPENMP=1
+# load a different compiler environment
+module purge
+module load PrgEnv-intel/8.3.3  openmpi/5.0.5-icc24.2.1
+
+# clean up the original build, or make won't rebuild
+make clean
+# rebuild
+make MPICXX="mpicxx -D USE_MPI=0 -D WITH_OPENMP=0" CXXFLAGS="-g -I." LDFLAGS="-g"
+
+# run in compute node
+./lulesh2.0 -p -s 25
 ```
 
-Run
+Record our optimised result and compare against our baseline performance:
+
+| **Optimisation** | Problem Size | MaxAbsDiff   | Elapsed Time | **Speedup** |
+| ---------------- | ------------ | ------------ | ------------ | ----------- |
+| Baseline         | 25           | 3.637979e-11 | 65           | 1.00×       |
+| Intel Compiler   | 25           | 2.728484e-11 | 47           | 1.38×       |
+
+## Optimisation: Compiler Flags
+
+Compiler flags control how the compiler transforms source code into an executable. Optimisation `-O1,-O2,-O3,-OFast` flags allow the compiler to apply optimisations without changing the original source code.
+
+Without changing a single line of code, try different optimisation levels (eg. `-O3`):
 
 ```bash
-OMP_NUM_THREADS=1
+# clean up the original build, or make won't rebuild
+make clean
+# rebuild
+make MPICXX="mpicxx -D USE_MPI=0 -D WITH_OPENMP=0" CXXFLAGS="-g -I. -O3" LDFLAGS="-g -O3"
+# run in compute node
+./lulesh2.0 -p -s 25
 ```
 
-Then
+Record our optimised result and compare against our baseline performance:
+
+| **Optimisation** | Problem Size | MaxAbsDiff   | Elapsed Time | **Speedup** |
+| ---------------- | ------------ | ------------ | ------------ | ----------- |
+| Baseline         | 25           | 3.637979e-11 | 65           | 1x          |
+| -O3              | 25           | 3.637979e-11 | 8.3          | 7.83×       |
+
+## Optimisation: OpenMP Parallelisation
+
+OpenMP provides **shared-memory parallelism**, where multiple threads execute on the same compute node and share memory.
+
+```mermaid
+graph LR
+    A[Thread 1] --> E[Shared Memory]
+    B[Thread 2] --> E
+    C[Thread 3] --> E
+    D[Thread 4] --> E
+```
+
+Compile LULESH with OpenMP support:
+
+```
+make clean
+make MPICXX="mpicxx -D USE_MPI=0 -D WITH_OPENMP=1" CXXFLAGS="-g -I. -O3" LDFLAGS="-g"
+```
+
+Run with different thread counts:
+
+```
+OMP_NUM_THREADS=1 ./lulesh2.0 -s 25
+OMP_NUM_THREADS=8 ./lulesh2.0 -s 25
+OMP_NUM_THREADS=16 ./lulesh2.0 -s 25
+OMP_NUM_THREADS=32 ./lulesh2.0 -s 25
+OMP_NUM_THREADS=64 ./lulesh2.0 -s 25
+```
+
+Record our optimised result and compare against our baseline performance:
+
+### Optimisation: MPI and Hybrid Parallelisation
+
+MPI enables parallel execution across multiple nodes by communicating between independent processes.
+
+```mermaid
+graph TB
+    A[MPI Process 0] <-->|Communication| B[MPI Process 1]
+    B <-->|Communication| C[MPI Process 2]
+```
+
+Compile LULESH with MPI support:
 
 ```bash
-OMP_NUM_THREADS=2
+make clean
+make MPICXX="mpicxx -D USE_MPI=1 -D WITH_OPENMP=0" CXXFLAGS="-g -I. -O3" LDFLAGS="-g -O3"
 ```
+
+Run with different MPI process & counts:
 
 ```bash
-OMP_NUM_THREADS=4
+mpirun -np 1 ./lulesh2.0 -s 25
+
+mpirun -np 2 ./lulesh2.0 -s 25
+
+mpirun -np 4 ./lulesh2.0 -s 25
 ```
 
-```bash
-OMP_NUM_THREADS=8
-```
+Record our optimised result and compare against our baseline performance:
 
-Record
-
-|Threads|Runtime|Speedup|Efficiency|
-|---|---|---|---|
-|1||1×|100%|
-|2||||
-|4||||
-|8||||
-
-Discussion
-
-- Does performance scale linearly?
-    
-- Why does efficiency decrease?
-    
-- What limits OpenMP scaling?
-    
-
----
-
-# Part 8 - MPI
-
-Now move from shared memory to distributed memory.
-
-Compile
-
-```bash
-make USE_MPI=1
-```
-
-Run
-
-```bash
-mpirun -np 1 ./lulesh2.0
-```
-
-Then
-
-```bash
-mpirun -np 2 ./lulesh2.0
-```
-
-```bash
-mpirun -np 4 ./lulesh2.0
-```
-
-Record
-
-|MPI Ranks|Runtime|
-|---|---|
-|1||
-|2||
-|4||
-
-Discussion
-
-- What communication is happening?
-    
-- Why doesn't doubling the number of processes halve the runtime?
-    
-
----
-
-# Part 9 - Hybrid Parallelism
-
-Finally combine MPI and OpenMP.
-
-Example
-
-```bash
-OMP_NUM_THREADS=4
-
-mpirun -np 2 ./lulesh2.0
-```
-
-Experiment
-
-|MPI|Threads|Total Cores|Runtime|
-|---|---|---|---|
-|1|8|8||
-|2|4|8||
-|4|2|8||
-|8|1|8||
-
-Discussion
-
-Which configuration is fastest?
-
-Why?
-
----
+# Challenge Exercises (Student-led)
 
 # Part 10 - Submit Through PBS
 
@@ -580,11 +538,8 @@ After experimenting on an interactive node, submit the benchmark as a PBS batch 
 Students modify
 
 - walltime
-    
 - CPU count
-    
 - job name
-    
 
 Submit
 
@@ -605,11 +560,6 @@ cat lulesh.o*
 ```
 
 ---
-
-# Challenge Exercises (Student-led)
-
-Rather than giving all optimisations, leave these as investigations.
-
 
 ## Build LULESH with CMake
 
@@ -645,11 +595,8 @@ Can you find compiler flags that outperform `-O3`?
 Hints
 
 - architecture-specific optimisation
-    
 - vectorisation
-    
 - floating-point optimisation
-    
 
 ---
 
@@ -683,16 +630,6 @@ Does thread affinity matter?
 
 ---
 
-## Challenge 4
-
-Run larger problem sizes.
-
-Does parallel efficiency improve?
-
-Why?
-
----
-
 ## Challenge 5
 
 Profile the OpenMP version.
@@ -706,9 +643,7 @@ Has the hotspot changed?
 Compare
 
 - many MPI processes
-    
 - few MPI processes + many threads
-    
 
 Which performs better on Aspire2A?
 
@@ -718,13 +653,11 @@ Which performs better on Aspire2A?
 
 Students should complete a results table throughout the workshop.
 
-|Stage|Runtime|Speedup|
-|---|---|---|
-|Serial (-O0)||1×|
-|Serial (-O3)|||
-|Intel Compiler|||
-|OpenMP (8 threads)|||
-|MPI (8 ranks)|||
-|Hybrid (2×4)|||
-
-This structure keeps the workshop highly interactive. Every section starts with a working program, introduces exactly one new optimization, has students benchmark and record the results, and ends with a discussion about _why_ the observed performance changed. The final challenge exercises deliberately leave several important optimization techniques unexplored so students can investigate them independently or in a follow-up workshop.
+| Stage              | Runtime | Speedup |
+| ------------------ | ------- | ------- |
+| Serial (-O0)       |         | 1×      |
+| Serial (-O3)       |         |         |
+| Intel Compiler     |         |         |
+| OpenMP (8 threads) |         |         |
+| MPI (8 ranks)      |         |         |
+| Hybrid (2×4)       |         |         |
