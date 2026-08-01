@@ -466,65 +466,91 @@ For example, if the baseline runtime is **65 s**:
 
 A larger speedup indicates a greater performance improvement. For example, a speedup of **2×** means the optimised program completes in half the time of the baseline, while a speedup of **5×** means it completes five times faster.
 
-## Optimisation: Different Compilers
+## Optimisation: Different Compiler Environments
 
-Different compilers can generate different machine code from the same source code. Compiler design, optimisation strategies, and hardware-specific features can affect the final performance of an application.
+Modern HPC systems provide multiple compiler toolchains. Although they compile the same source code, each compiler uses different optimisation strategies and may generate different machine code for the target architecture.
 
-Repeat the same benchmark using different compiler environments:
+In this exercise we compare the GNU Compiler Collection (GCC) with the Intel OneAPI compiler.
+
+Switch to the Intel programming environment:
+
+```bash
+module purge
+module load PrgEnv-intel/8.3.3 openmpi/5.0.5-icc24.2.1
+
+make clean
+
+make \
+    MPICXX="mpicxx -D USE_MPI=0 -D WITH_OPENMP=0" \
+    CXXFLAGS="-g -I." \
+    LDFLAGS="-g"
+```
+
+Run the benchmark:
+
+```bash
+./lulesh2.0 -p -s 25
+```
+
+### Reference Results
+
+| Compiler | Optimisation | Runtime | Speedup |
+| -------- | ------------ | ------- | ------- |
+| GCC      | -O0          | 40.0 s  | 1.00×   |
+| Intel    | -O0          | 46.0 s  | 0.87×   |
+
+## Optimisation: Compiler Optimisation Flags
+
+Compiler optimisation flags allow the compiler to transform the generated machine code without requiring any changes to the source code. This is often the easiest way to improve performance.
+
+Rebuild LULESH with different optimisation levels.
 
 Example:
 
-- GCC
-- Intel OneAPI
-
-Build LULESH with a different compiler:
-
 ```bash
-# load a different compiler environment
-module purge
-module load PrgEnv-intel/8.3.3  openmpi/5.0.5-icc24.2.1
-
-# clean up the original build, or make won't rebuild
 make clean
-# rebuild
-make MPICXX="mpicxx -D USE_MPI=0 -D WITH_OPENMP=0" CXXFLAGS="-g -I." LDFLAGS="-g"
 
-# run in compute node
-./lulesh2.0 -p -s 25
+make \
+    MPICXX="mpicxx -D USE_MPI=0 -D WITH_OPENMP=0" \
+    CXXFLAGS="-I. -O3" \
+    LDFLAGS="-O3"
 ```
 
-Record our optimised result and compare against our baseline performance:
+Benchmark each optimisation level.
 
-| **Optimisation** | Problem Size | MaxAbsDiff   | Elapsed Time | **Speedup** |
-| ---------------- | ------------ | ------------ | ------------ | ----------- |
-| Baseline         | 25           | 3.637979e-11 | 65           | 1.00×       |
-| Intel Compiler   | 25           | 2.728484e-11 | 47           | 1.38×       |
+### GCC Reference Results
 
-## Optimisation: Compiler Flags
+| Flags      | Runtime   | Speedup   |
+| ---------- | --------- | --------- |
+| -O0        | 40.0 s    | 1.00×     |
+| -O1        | 11.0 s    | 3.64×     |
+| -O2        | 9.3 s     | 4.30×     |
+| -O3        | 8.5 s     | 4.71×     |
+| **-Ofast** | **8.3 s** | **4.82×** |
 
-Compiler flags control how the compiler transforms source code into an executable. Optimisation `-O1,-O2,-O3,-OFast` flags allow the compiler to apply optimisations without changing the original source code.
+### Intel Compiler Reference Results
 
-Without changing a single line of code, try different optimisation levels (eg. `-O3`):
+| Flags   | Runtime   | Speedup   |
+| ------- | --------- | --------- |
+| -O0     | 46.0 s    | 1.00×     |
+| -O1     | 9.3 s     | 4.95×     |
+| -O2     | 8.2 s     | 5.61×     |
+| **-O3** | **7.9 s** | **5.82×** |
+| -Ofast  | 8.0 s     | 5.75×     |
 
-```bash
-# clean up the original build, or make won't rebuild
-make clean
-# rebuild
-make MPICXX="mpicxx -D USE_MPI=0 -D WITH_OPENMP=0" CXXFLAGS="-g -I. -O3" LDFLAGS="-g -O3"
-# run in compute node
-./lulesh2.0 -p -s 25
-```
+### Discussion
 
-Record our optimised result and compare against our baseline performance:
+Several observations can be made:
 
-| **Optimisation** | Problem Size | MaxAbsDiff   | Elapsed Time | **Speedup** |
-| ---------------- | ------------ | ------------ | ------------ | ----------- |
-| Baseline         | 25           | 3.637979e-11 | 65           | 1x          |
-| -O3              | 25           | 3.637979e-11 | 8.3          | 7.83×       |
+- At no optimisation (`-O0`), GCC produced a slightly faster executable than the Intel compiler. This demonstrates that compiler performance depends not only on the compiler itself, but also on the optimisation level being used.
+- Most of the performance improvement comes from moving from **-O0** to **-O1**.
+- `-O2` and `-O3` provide smaller incremental improvements.
+- Intel produced the fastest executable in this benchmark.
+- Interestingly, Intel's `-O3` slightly outperformed `-Ofast`. **More aggressive optimisation does not always translate into better performance**; the additional floating-point transformations enabled by `-Ofast` can sometimes increase instruction count or reduce cache efficiency.
 
 ## Optimisation: OpenMP Parallelisation
 
-OpenMP provides **shared-memory parallelism**, where multiple threads execute on the same compute node and share memory.
+OpenMP enables multiple CPU cores on the same compute node to execute different parts of the program simultaneously using shared memory.
 
 ```mermaid
 graph LR
@@ -534,16 +560,24 @@ graph LR
     D[Thread 4] --> E
 ```
 
-Compile LULESH with OpenMP support:
+Compile LULESH with OpenMP enabled.
 
-```
+```bash
 make clean
-make MPICXX="mpicxx -D USE_MPI=0 -D WITH_OPENMP=1" CXXFLAGS="-g -I. -O3" LDFLAGS="-g"
+
+make \
+    MPICXX="mpicxx -D USE_MPI=0 -D WITH_OPENMP=1" \
+    CXXFLAGS="-O3 -fopenmp -I." \
+    LDFLAGS="-O3 -fopenmp"
 ```
 
-Run with different thread counts:
+> **Note**
+>
+> The `WITH_OPENMP=1` macro only enables OpenMP-related code paths inside LULESH. The compiler must also be given the `-fopenmp` flag so that OpenMP pragmas are recognised and parallel code is generated.
 
-```
+Run with different thread counts.
+
+```bash
 OMP_NUM_THREADS=1 ./lulesh2.0 -s 25
 OMP_NUM_THREADS=8 ./lulesh2.0 -s 25
 OMP_NUM_THREADS=16 ./lulesh2.0 -s 25
@@ -551,166 +585,91 @@ OMP_NUM_THREADS=32 ./lulesh2.0 -s 25
 OMP_NUM_THREADS=64 ./lulesh2.0 -s 25
 ```
 
-Record our optimised result and compare against our baseline performance:
+### Reference Results
 
-### Optimisation: MPI and Hybrid Parallelisation
+| Threads | Runtime   | Speedup   |
+| ------- | --------- | --------- |
+| 1       | 8.6 s     | 1.00×     |
+| 8       | 3.7 s     | 2.32×     |
+| **16**  | **3.3 s** | **2.61×** |
+| 32      | 3.5 s     | 2.46×     |
+| 64      | 6.1 s     | 1.41×     |
 
-MPI enables parallel execution across multiple nodes by communicating between independent processes.
+### Discussion
+
+Performance improves substantially when increasing the thread count from 1 to 16 threads.
+
+Beyond 16 threads, performance begins to plateau and eventually decreases. This is common in shared-memory applications as thread scheduling overhead, cache contention and memory bandwidth limitations begin to dominate.
+
+**More threads do not necessarily result in faster execution.**
+
+## Optimisation: MPI Parallelisation
+
+MPI distributes work across multiple independent processes.
+
+Unlike OpenMP, each MPI process has its own address space and communicates with other processes through explicit message passing.
 
 ```mermaid
 graph TB
-    A[MPI Process 0] <-->|Communication| B[MPI Process 1]
-    B <-->|Communication| C[MPI Process 2]
+    A[MPI Rank 0] <-->|MPI| B[MPI Rank 1]
+    B <-->|MPI| C[MPI Rank 2]
 ```
 
-Compile LULESH with MPI support:
+Compile with MPI enabled.
 
 ```bash
 make clean
-make MPICXX="mpicxx -D USE_MPI=1 -D WITH_OPENMP=0" CXXFLAGS="-g -I. -O3" LDFLAGS="-g -O3"
+
+make \
+    MPICXX="mpicxx -D USE_MPI=1 -D WITH_OPENMP=0" \
+    CXXFLAGS="-O3 -I." \
+    LDFLAGS="-O3"
 ```
 
-Run with different MPI process & counts:
+Run with different MPI process counts.
 
 ```bash
-mpirun -np 1 ./lulesh2.0 -s 25
-
-mpirun -np 2 ./lulesh2.0 -s 25
-
-mpirun -np 4 ./lulesh2.0 -s 25
+mpirun -x PATH -x LD_LIBRARY_PATH -np 1 ./lulesh2.0 -s 25
+mpirun -x PATH -x LD_LIBRARY_PATH -np 8 ./lulesh2.0 -s 25
 ```
 
-Record our optimised result and compare against our baseline performance:
+> **Note**
+>
+> LULESH decomposes the computational domain into a three-dimensional grid. Consequently, the number of MPI processes must be a **perfect cube** (1, 8, 27, 64, ...). Process counts such as 2 or 4 are not valid.
+>
+> Some systems may require `PATH` and `LD_LIBRARY_PATH` to be propagated through `mpirun` when using the Intel compiler so that runtime libraries (such as `libimf.so`) are visible to all MPI ranks.
 
-# Challenge Exercises (Student-led)
+### Reference Results
 
-# Part 10 - Submit Through PBS
+| MPI Processes | Runtime |
+| ------------- | ------- |
+| 1             | 9.4 s   |
+| 8             | 21.0 s  |
 
-After experimenting on an interactive node, submit the benchmark as a PBS batch job.
+### Discussion
 
-Students modify
+For this relatively small problem size, MPI significantly increases runtime.
 
-- walltime
-- CPU count
-- job name
+Although the computation is distributed across multiple processes, the communication overhead outweighs the computational savings. MPI typically becomes advantageous only when the workload per process is sufficiently large.
 
-Submit
+# Conclusion
 
-```bash
-qsub run.sh
-```
-
-Monitor
-
-```bash
-qstat
-```
-
-Read results
-
-```bash
-cat lulesh.o*
-```
+The key lesson here is that software optimisation is an iterative process. Significant performance improvements were achieved through compiler optimisation, OpenMP parallelisation, and runtime tuning, while MPI did not improve performance for this small workload due to communication overhead.
 
 ---
 
-## Build LULESH with CMake
+# Take Home Challenges
 
-Compile LULESH **without any compiler optimisations** (`Debug` build).
+Dabble in further optimisations using the guided challenges below. You are also encouraged to explore your own optimisations and discuss them in the HPC interest group telegram chat.
 
-```bash
-mkdir -p build
-cd build
-cmake -DCMAKE_BUILD_TYPE=Debug ..
-cmake --build .
-```
+## Challenge 1 - Finding Better Compiler Flags
 
-Run the executable:
+Can you outperform `-O3`? Perhaps you use compiler flags to enable architecture-specific optimisations.
 
-```bash
-./lulesh2.0
-```
+## Challenge 2 - Thread Affinity
 
-Record the runtime.
+Operating systems may migrate threads between CPU cores during execution.
 
-| Configuration        | Runtime |
-| -------------------- | ------- |
-| Serial (Debug / -O0) |         |
+Thread affinity allows OpenMP threads to remain on fixed CPU cores, improving cache locality.
 
-This runtime serves as the baseline for later performance comparisons.
-
----
-
-## Challenge 1
-
-Can you find compiler flags that outperform `-O3`?
-
-Hints
-
-- architecture-specific optimisation
-- vectorisation
-- floating-point optimisation
-
----
-
-## Challenge 2
-
-Investigate OpenMP scheduling.
-
-Try
-
-```text
-schedule(static)
-schedule(dynamic)
-schedule(guided)
-```
-
-Does runtime change?
-
----
-
-## Challenge 3
-
-Experiment with
-
-```text
-OMP_PROC_BIND
-
-OMP_PLACES
-```
-
-Does thread affinity matter?
-
----
-
-## Challenge 5
-
-Profile the OpenMP version.
-
-Has the hotspot changed?
-
----
-
-## Challenge 6
-
-Compare
-
-- many MPI processes
-- few MPI processes + many threads
-
-Which performs better on Aspire2A?
-
----
-
-# Final Performance Summary
-
-Students should complete a results table throughout the workshop.
-
-| Stage              | Runtime | Speedup |
-| ------------------ | ------- | ------- |
-| Serial (-O0)       |         | 1×      |
-| Serial (-O3)       |         |         |
-| Intel Compiler     |         |         |
-| OpenMP (8 threads) |         |         |
-| MPI (8 ranks)      |         |         |
-| Hybrid (2×4)       |         |         |
+Explore the OpenMP documentation on how to enable this.
