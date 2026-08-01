@@ -3,8 +3,6 @@
 High Performance Computing (HPC) is about more than having access to thousands of CPU cores
 it is about writing software that can efficiently utilise those resources.
 
-In this workshop, we will build and optimise the **LULESH (Livermore Unstructured Lagrangian Explicit Shock Hydrodynamics)** application developed by Lawrence Livermore National Laboratory (LLNL) to simulate Hydrodynamics, how fluids move and interact with each other.
-
 By the end of this workshop you will have learned:
 
 - Using the Aspire2A supercomputer.
@@ -27,13 +25,75 @@ By the end of this workshop you will have learned:
 | 6     | Optimise: Run with MPI                  |
 | 7     | Independent optimisation exercises      |
 
----
-
 # Setup: Accessing & Using Aspire2A
 
 ## Accessing Aspire 2A
 
-Follow the steps [here](https://github.com/ntuhpc/workshops/blob/80a281c2f74330305a1bb65f35b30b76e6ee5eaa/ml_aspire2a/README.md#access-aspire2a) to access aspire 2A.
+To access Aspire2A, first register an NSCC user account, then connect to Aspire2A using SSH.
+
+### Setup NSCC User Account
+
+To access Aspire2A, follow these steps:
+
+1. **Ensure you are on the NTU network (`NTUSecure`)**
+
+   > Outside NTU? First connect to the NTU VPN using the [VPN](https://vpngate-student.ntu.edu.sg/global-protect/getsoftwarepage.esp), then connect to Aspire2A via the [NTU Jump Host](https://entuedu.sharepoint.com/teams/ntuhpcusersgroup2/SitePages/Using-NTU-JumpHost-to-NSCC-ASPIRE-2A.aspx).
+   >
+   > The detailed jump host setup is left as an exercise for the reader.
+
+2. Go to the [NSCC User Portal](https://user.nscc.sg/saml/) and register for Aspire2A access.
+3. Set a password by following the [NSCC User Enrollment Guide](https://help.nscc.sg/wp-content/uploads/2024/05/NSCC-UserEnrollmentGuide-v0.1.pdf).
+
+   > **Optional:** Configure SSH key authentication for passwordless login.
+
+---
+
+## Connecting to Aspire2A via SSH
+
+You can connect to Aspire2A using any SSH client:
+
+- **Windows Terminal**
+- **PowerShell**
+- **Command Prompt**
+- **WSL (Windows Subsystem for Linux)**
+- **macOS Terminal**
+- **Linux Terminal**
+
+1. Connect to Aspire2A:
+
+   ```sh
+   ssh <USERNAME>@aspire2antu.nscc.sg
+   ```
+
+   Replace `<USERNAME>` with your Aspire2A username.
+
+2. **Accept the host key** (first login only)
+
+   If prompted:
+
+   ```text
+   Are you sure you want to continue connecting (yes/no/[fingerprint])?
+   ```
+
+   Type:
+
+   ```text
+   yes
+   ```
+
+3. Enter your password when prompted.
+
+## LUHESH
+
+In this workshop, we will build and optimise the **LULESH (Livermore Unstructured Lagrangian Explicit Shock Hydrodynamics)** application developed by Lawrence Livermore National Laboratory (LLNL) to simulate Hydrodynamics, how fluids move and interact with each other.
+
+Clone an copy of the LULESH source code below:
+
+```sh
+git clone  https://github.com/llnl/LULESH.git
+```
+
+> Remember clone the source code outside of a compute node as it does not have `git` installed.
 
 ## Aspire2A Service Units
 
